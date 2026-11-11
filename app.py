@@ -59,11 +59,11 @@ BASE_DIR = Path(__file__).resolve().parent
 
 @st.cache_data
 def load_datasets():
-
+ 
     files = {
-        "Objective 1": "objective1_merged.csv",
-        "Objective 2": "objective2_merged.csv",
-        "Objective 3": "objective3_merged.csv"
+        "Objective 1": "df_merged_income_birth (1).csv",
+        "Objective 2": "df_merged_income_rates.csv",
+        "Objective 3": "df_merged_birth_rates_2016_2025.csv"
     }
 
     required = {
