@@ -1052,36 +1052,16 @@ def objective3():
 # 4. DASHBOARD HEADER
 # ==========================================
 
-st.markdown("""
-<div style="
-    background:#184B3C;
-    color:white;
-    padding:24px 28px;
-    border-radius:15px;
-    margin-bottom:12px;
-">
-    <div style="
-        font-size:12px;
-        font-weight:700;
-        letter-spacing:1.2px;
-        color:#DDECE4;
-    ">
+st.html("""
+<div style="background:#184B3C; color:white; padding:20px 24px; border-radius:12px;">
+    <div style="font-size:13px; font-weight:700; color:#DDECE4;">
         JIE42403 · SCIENTIFIC VISUALISATION
     </div>
-
-    <div style="
-        font-size:32px;
-        font-weight:700;
-        margin:5px 0;
-    ">
+    <div style="font-size:30px; font-weight:700; color:white; margin-top:8px;">
         Malaysia Data Insights
     </div>
-
-    <div style="color:#E4F2EB">
-        Three Research Objectives · Three Separate Pages
-    </div>
 </div>
-""", unsafe_allow_html=True)
+""")
 
 
 # ==========================================
