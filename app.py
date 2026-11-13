@@ -1,70 +1,79 @@
-
 from pathlib import Path
 
-import altair as alt
 import numpy as np
 import pandas as pd
+import altair as alt
 import plotly.graph_objects as go
 import streamlit as st
 
-# -------------------------------------------------
-# 1. PAGE SETTINGS
-# -------------------------------------------------
+# =====================================================
+# 1. PAGE CONFIGURATION
+# =====================================================
 st.set_page_config(
     page_title="Malaysia Data Insights",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
 
 GREEN = "#287C62"
-DARK = "#184B3C"
-SURVEY_YEARS = [2016, 2019, 2020, 2022, 2024]
+DARK_GREEN = "#184B3C"
+ORANGE = "#D38A49"
 
-st.markdown(
-    """
-    <style>
-      .block-container {max-width: 1150px; padding-top: 1.5rem;}
-      h1, h2, h3 {color: #184B3C;}
-      div[data-testid="stMetric"] {
-        background: #F1F8F4;
-        border: 1px solid #DDECE4;
-        border-radius: 12px;
-        padding: 14px;
-      }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+YEARS = [2016, 2019, 2020, 2022, 2024]
 
-# -------------------------------------------------
-# 2. LOAD THREE CSV FILES
-# -------------------------------------------------
+st.markdown("""
+<style>
+.block-container {
+    max-width: 1120px;
+    padding-top: 1.3rem;
+}
+h1, h2, h3 {
+    color: #184B3C;
+}
+div[data-testid="stMetric"] {
+    background-color: #F4F9F6;
+    border: 1px solid #DDECE4;
+    border-radius: 12px;
+    padding: 14px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# =====================================================
+# 2. LOAD DATASETS
+# =====================================================
 @st.cache_data
-def load_datasets():
-    root = Path(__file__).resolve().parent
+def load_data():
 
-    files = {
-        "income_birth": "df_merged_income_birth (1).csv",
-        "income_school": "df_merged_income_rates.csv",
-        "birth_school": "df_merged_birth_rates_2016_2025.csv",
+    folder = Path(__file__).resolve().parent
+
+    filenames = {
+        "obj1": "df_merged_income_birth (1).csv",
+        "obj2": "df_merged_income_rates.csv",
+        "obj3": "df_merged_birth_rates_2016_2025.csv"
     }
 
     frames = {}
 
-    for key, name in files.items():
-        path = root / name
+    for key, filename in filenames.items():
+
+        path = folder / filename
 
         if not path.exists():
-            raise FileNotFoundError(f"Missing CSV file: {name}")
+            raise FileNotFoundError(filename)
 
         df = pd.read_csv(path)
 
-        df["year"] = pd.to_datetime(
-            df["date"], errors="coerce"
-        ).dt.year
+        df["state"] = (
+            df["state"].astype(str).str.strip()
+        )
 
-        df["state"] = df["state"].astype(str).str.strip()
+        df["year"] = pd.to_datetime(
+            df["date"],
+            errors="coerce"
+        ).dt.year
 
         df = df.dropna(subset=["year"])
 
@@ -74,77 +83,69 @@ def load_datasets():
 
         df["year"] = df["year"].astype(int)
 
-        for col in ["income_mean", "abs", "completion"]:
+        for col in [
+            "income_mean",
+            "abs",
+            "completion"
+        ]:
             if col in df.columns:
                 df[col] = pd.to_numeric(
-                    df[col], errors="coerce"
+                    df[col],
+                    errors="coerce"
                 )
 
         if "sex" in df.columns:
             df = df[
-                df["sex"].astype(str).str.lower().eq("both")
-            ]
+                df["sex"].astype(str)
+                .str.lower()
+                .eq("both")
+            ].copy()
 
         frames[key] = df
 
     return (
-        frames["income_birth"],
-        frames["income_school"],
-        frames["birth_school"]
+        frames["obj1"],
+        frames["obj2"],
+        frames["obj3"]
     )
 
 
 try:
-    df1, df2, df3 = load_datasets()
+    df1, df2, df3 = load_data()
 
-except (
-    FileNotFoundError,
-    KeyError,
-    ValueError,
-    pd.errors.ParserError
-) as error:
-
-    st.error(f"Unable to load the datasets: {error}")
-
-    st.info(
-        "Upload all three merged CSV files to "
-        "the same GitHub folder as app.py."
-    )
-
+except Exception as e:
+    st.error(f"Unable to load CSV files: {e}")
     st.stop()
 
 
-# -------------------------------------------------
+# =====================================================
 # 3. HELPER FUNCTIONS
-# -------------------------------------------------
-def correlation(df, x, y):
+# =====================================================
+def pearson(data, x, y):
 
-    clean = df[[x, y]].dropna()
+    valid = data[[x, y]].dropna()
 
     if (
-        len(clean) < 3
-        or clean[x].nunique() < 2
-        or clean[y].nunique() < 2
+        len(valid) < 3
+        or valid[x].nunique() < 2
+        or valid[y].nunique() < 2
     ):
         return float("nan")
 
-    return clean[x].corr(clean[y])
+    return valid[x].corr(valid[y])
 
 
-def strength(r):
+def correlation_label(r):
 
     if pd.isna(r):
         return "undefined"
 
     if abs(r) < 0.10:
         level = "negligible"
-
     elif abs(r) < 0.30:
         level = "weak"
-
     elif abs(r) < 0.70:
         level = "moderate"
-
     else:
         level = "strong"
 
@@ -157,77 +158,77 @@ def strength(r):
     return f"{level} {direction}"
 
 
-def metrics(items):
+def summary_cards(items):
 
-    columns = st.columns(3)
+    cols = st.columns(3)
 
-    for col, (label, value) in zip(columns, items):
-        col.metric(label, value)
+    for col, (title, value) in zip(cols, items):
+        col.metric(title, value)
 
 
-# -------------------------------------------------
+# =====================================================
 # OBJECTIVE 1
-# ANNUAL LIVE BIRTHS AND HOUSEHOLD INCOME
-# -------------------------------------------------
+# ANNUAL LIVE BIRTHS VS HOUSEHOLD INCOME
+# ONE GRAPH - NO FILTER
+# =====================================================
 def objective1():
 
     st.header(
-        "Objective 1: Annual Live Births and Household Income"
+        "Objective 1: Annual Live Births "
+        "and Household Income"
     )
 
     st.write(
-        "**Research Objective:** To identify the relationship "
-        "between annual live births and household income."
+        "**Research Objective:** To identify the "
+        "relationship between annual live births "
+        "and household income."
     )
 
+    # Prepare data
     data = df1[
-        df1["year"].isin(SURVEY_YEARS)
+        df1["year"].isin(YEARS)
     ].dropna(
-        subset=["state", "income_mean", "abs"]
+        subset=[
+            "state",
+            "income_mean",
+            "abs"
+        ]
     ).copy()
 
     if data.empty:
-        st.warning("No valid data for Objective 1.")
+        st.warning("No valid data available.")
         return
 
-    # YEAR SELECTION
-    chosen = st.selectbox(
-        "Select Survey Year",
-        ["All Years"] + SURVEY_YEARS,
-        key="obj1_year",
+    # Statistical calculations
+    r = pearson(
+        data,
+        "income_mean",
+        "abs"
     )
 
-    if chosen == "All Years":
-        current = data.copy()
+    avg_births = data["abs"].mean()
 
-    else:
-        current = data[
-            data["year"] == chosen
-        ].copy()
-
-    r = correlation(
-        current, "income_mean", "abs"
-    )
-
-    # SUMMARY BOXES
-    metrics([
+    # Summary boxes
+    summary_cards([
         (
             "Area-Year Observations",
-            f"{len(current):,}"
+            f"{len(data):,}"
         ),
         (
             "Average Births per Area-Year",
-            f"{current['abs'].mean():,.2f}"
+            f"{avg_births:,.2f}"
         ),
         (
             "Pearson Correlation (r)",
             f"{r:+.3f}"
-        ),
+        )
     ])
 
-    # INTERACTIVE SCATTER PLOT
+    # -------------------------------------------------
+    # ONE ENHANCED INTERACTIVE SCATTER PLOT
+    # -------------------------------------------------
     st.subheader(
-        "Interactive Scatter Plot"
+        "Visualisation 1 — Enhanced Scatter Plot"
     )
 
     colors = {
@@ -235,36 +236,35 @@ def objective1():
         2019: "#377CA8",
         2020: "#299A8B",
         2022: "#D58A47",
-        2024: "#84AD50",
+        2024: "#84AD50"
     }
 
     fig = go.Figure()
 
-    for year in sorted(
-        current["year"].unique()
-    ):
+    # Plot all five years without filtering
+    for year in YEARS:
 
-        d = current[
-            current["year"] == year
-        ]
+        group = data[
+            data["year"] == year
+        ].copy()
 
         custom = np.column_stack([
-            d["state"],
-            d["year"].astype(str)
+            group["state"].astype(str),
+            group["year"].astype(str)
         ])
 
         fig.add_trace(
             go.Scatter(
-                x=d["income_mean"],
-                y=d["abs"],
-                customdata=custom,
+                x=group["income_mean"],
+                y=group["abs"],
                 mode="markers",
                 name=str(year),
+                customdata=custom,
 
                 marker=dict(
-                    size=12,
+                    size=11,
                     color=colors[year],
-                    opacity=0.85,
+                    opacity=0.87,
                     line=dict(
                         color="white",
                         width=1
@@ -274,51 +274,168 @@ def objective1():
                 hovertemplate=(
                     "<b>%{customdata[0]}</b>"
                     "<br>Year: %{customdata[1]}"
-                    "<br>Mean Monthly Household Income: "
-                    "RM%{x:,.0f}"
+                    "<br>Mean Monthly Income: RM%{x:,.0f}"
                     "<br>Annual Live Births: %{y:,.0f}"
                     "<extra></extra>"
                 )
             )
         )
 
+    # -------------------------------------------------
+    # HIGHLIGHT MAIN CLUSTER
+    # -------------------------------------------------
+    cluster = data[
+        data["income_mean"].between(
+            4000, 8000
+        )
+        &
+        data["abs"].between(
+            15000, 40000
+        )
+    ]
+
+    fig.add_shape(
+        type="rect",
+        x0=4000,
+        x1=8000,
+        y0=15000,
+        y1=40000,
+        fillcolor="rgba(40,124,98,0.075)",
+        line=dict(
+            color="rgba(40,124,98,0.55)",
+            width=1,
+            dash="dot"
+        ),
+        layer="below"
+    )
+
+    # -------------------------------------------------
     # REGRESSION LINE
-    if current["income_mean"].nunique() >= 2:
+    # -------------------------------------------------
+    x = data["income_mean"].to_numpy()
+    y = data["abs"].to_numpy()
 
-        slope, intercept = np.polyfit(
-            current["income_mean"],
-            current["abs"],
-            1
+    slope, intercept = np.polyfit(
+        x, y, 1
+    )
+
+    x_line = np.linspace(
+        x.min(),
+        x.max(),
+        100
+    )
+
+    y_line = slope * x_line + intercept
+
+    fig.add_trace(
+        go.Scatter(
+            x=x_line,
+            y=y_line,
+            mode="lines",
+            name="Overall Regression Line",
+            line=dict(
+                color="#263D35",
+                width=2,
+                dash="dash"
+            ),
+            hoverinfo="skip"
         )
+    )
 
-        x_line = np.linspace(
-            data["income_mean"].min(),
-            data["income_mean"].max(),
-            100
+    # -------------------------------------------------
+    # LABEL IMPORTANT OBSERVATIONS
+    # -------------------------------------------------
+    highest = data.loc[
+        data["abs"].idxmax()
+    ]
+
+    lowest = data.loc[
+        data["abs"].idxmin()
+    ]
+
+    fig.add_annotation(
+        x=float(highest["income_mean"]),
+        y=float(highest["abs"]),
+        text=(
+            f"{highest['state']} "
+            f"{int(highest['year'])}"
+            f"<br>{highest['abs']:,.0f} births"
+        ),
+        showarrow=True,
+        ax=55,
+        ay=-32,
+        arrowhead=2,
+        bgcolor="rgba(255,255,255,0.92)",
+        bordercolor="#DDECE4",
+        font=dict(
+            size=10,
+            color="#263D35"
         )
+    )
 
-        y_line = slope * x_line + intercept
+    # Compare two states with similar high incomes
+    selangor = data[
+        (data["state"].str.lower() == "selangor")
+        &
+        (data["year"] == 2024)
+    ]
 
-        fig.add_trace(
-            go.Scatter(
-                x=x_line,
-                y=y_line,
-                mode="lines",
-                name="Regression Line",
-                line=dict(
-                    color="#253449",
-                    width=2,
-                    dash="dash"
-                ),
-                hoverinfo="skip"
+    putrajaya = data[
+        data["state"].str.contains(
+            "putrajaya",
+            case=False,
+            na=False
+        )
+        &
+        (data["year"] == 2024)
+    ]
+
+    if (
+        len(selangor) == 1
+        and len(putrajaya) == 1
+    ):
+
+        selected_points = [
+            (
+                selangor.iloc[0],
+                "Selangor 2024",
+                -85,
+                -35
+            ),
+            (
+                putrajaya.iloc[0],
+                "Putrajaya 2024",
+                -100,
+                -42
             )
-        )
+        ]
 
-    # GRAPH DESIGN
+        for row, label, ax, ay in selected_points:
+
+            fig.add_annotation(
+                x=float(row["income_mean"]),
+                y=float(row["abs"]),
+                text=label,
+                showarrow=True,
+                ax=ax,
+                ay=ay,
+                arrowhead=2,
+                bgcolor="rgba(255,255,255,0.90)",
+                bordercolor="#DDECE4",
+                font=dict(
+                    size=10,
+                    color="#263D35"
+                )
+            )
+
+    # -------------------------------------------------
+    # CHART DESIGN
+    # -------------------------------------------------
     fig.update_layout(
+
         title=(
             "Household Income vs. Annual Live Births "
-            f"— {chosen}"
+            "(2016–2024)"
         ),
 
         xaxis_title=(
@@ -331,32 +448,37 @@ def objective1():
 
         legend_title="Survey Year",
         template="plotly_white",
-        height=560,
+        height=595,
         hovermode="closest",
 
         margin=dict(
-            l=35,
-            r=25,
-            t=70,
-            b=35
-        )
+            l=45,
+            r=35,
+            t=75,
+            b=55
+        ),
+
+        font=dict(size=12)
     )
 
     fig.update_xaxes(
-        range=[
-            data["income_mean"].min() - 700,
-            data["income_mean"].max() + 700
-        ],
         tickprefix="RM",
-        tickformat=","
+        tickformat=",",
+        range=[
+            max(
+                0,
+                data["income_mean"].min() - 700
+            ),
+            data["income_mean"].max() + 700
+        ]
     )
 
     fig.update_yaxes(
+        tickformat=",",
         range=[
             0,
-            data["abs"].max() * 1.10
-        ],
-        tickformat=","
+            data["abs"].max() * 1.20
+        ]
     )
 
     st.plotly_chart(
@@ -365,77 +487,148 @@ def objective1():
     )
 
     st.caption(
-        "Each point represents a Malaysian state or "
-        "Federal Territory in one survey year. "
-        "Hover over the points to identify the state, "
-        "year, household income and annual live births. "
-        "The dashed line represents the linear trend "
-        "for the selected observations."
+        "Each point represents one Malaysian state "
+        "or Federal Territory in a selected survey year. "
+        "Colours distinguish the five years. "
+        "The shaded rectangle highlights a densely "
+        "populated region of the scatter plot, "
+        "while the dashed line represents the overall "
+        "linear regression trend. Hover over points "
+        "to view individual state information."
     )
 
+    # -------------------------------------------------
     # KEY FINDINGS
-    st.subheader("Key Findings")
-
-    high = current.loc[
-        current["abs"].idxmax()
-    ]
-
-    low = current.loc[
-        current["abs"].idxmin()
-    ]
-
-    left, right = st.columns(2)
-
-    with left:
-
-        st.metric(
-            (
-                f"Highest Births: {high['state']} "
-                f"({int(high['year'])})"
-            ),
-            f"{high['abs']:,.0f}"
-        )
-
-    with right:
-
-        st.metric(
-            (
-                f"Lowest Births: {low['state']} "
-                f"({int(low['year'])})"
-            ),
-            f"{low['abs']:,.0f}"
-        )
-
-    # INTERPRETATION
+    # -------------------------------------------------
     st.subheader(
-        "Interpretation and Discussion"
+        "Patterns, Trends and Insights"
     )
 
     st.write(
-        f"The selected dataset contained "
-        f"**{len(current)} area-year observations**. "
-        f"The Pearson correlation coefficient of "
-        f"**{r:+.3f}** indicated a "
-        f"**{strength(r)} linear association** "
-        f"between household income and annual live births. "
-        f"States with similar household income levels "
-        f"could record considerably different birth totals. "
-        f"The highest number of births was recorded in "
-        f"**{high['state']} ({int(high['year'])})**, "
-        f"while the lowest was recorded in "
-        f"**{low['state']} ({int(low['year'])})**. "
-        f"Differences in population size and age structure "
-        f"may have contributed to these variations. "
-        f"These results describe an association rather "
-        f"than a causal relationship."
+        f"**1. Main cluster and data distribution:** "
+        f"The highlighted region contains "
+        f"**{len(cluster)} out of {len(data)} observations** "
+        f"({len(cluster)/len(data)*100:.1f}%). "
+        f"These observations have household incomes "
+        f"between RM4,000 and RM8,000 and annual "
+        f"live births between 15,000 and 40,000. "
+        f"This concentration shows that states "
+        f"with similar income levels can still "
+        f"record different birth totals."
     )
 
-    # DATA TABLE
-    with st.expander(
-        "View Objective 1 Data"
+    st.write(
+        f"**2. Highest and lowest observations:** "
+        f"The highest recorded observation was "
+        f"**{highest['state']} in "
+        f"{int(highest['year'])}**, "
+        f"with **{highest['abs']:,.0f} live births**. "
+        f"The lowest was **{lowest['state']} in "
+        f"{int(lowest['year'])}**, "
+        f"with **{lowest['abs']:,.0f} live births**. "
+        f"This difference highlights the wide "
+        f"variation between Malaysian areas."
+    )
+
+    if (
+        len(selangor) == 1
+        and len(putrajaya) == 1
     ):
 
-        display = current[
+        s = selangor.iloc[0]
+        p = putrajaya.iloc[0]
+
+        st.write(
+            f"**3. Comparison between similar income levels:** "
+            f"In 2024, Selangor recorded "
+            f"**{s['abs']:,.0f} live births** "
+            f"with a mean monthly household income "
+            f"of **RM{s['income_mean']:,.0f}**. "
+            f"In comparison, Putrajaya recorded "
+            f"**{p['abs']:,.0f} live births** "
+            f"with an income of "
+            f"**RM{p['income_mean']:,.0f}**. "
+            f"Despite having similar household "
+            f"income levels, the birth totals "
+            f"were substantially different. "
+            f"Population size may contribute "
+            f"to this variation."
+        )
+
+    # -------------------------------------------------
+    # COMPARE 2016 AND 2024
+    # -------------------------------------------------
+    yearly = data.groupby(
+        "year"
+    ).agg(
+        mean_income=(
+            "income_mean",
+            "mean"
+        ),
+        total_births=(
+            "abs",
+            "sum"
+        )
+    )
+
+    if (
+        2016 in yearly.index
+        and 2024 in yearly.index
+    ):
+
+        income_2016 = yearly.loc[
+            2016, "mean_income"
+        ]
+
+        income_2024 = yearly.loc[
+            2024, "mean_income"
+        ]
+
+        births_2016 = yearly.loc[
+            2016, "total_births"
+        ]
+
+        births_2024 = yearly.loc[
+            2024, "total_births"
+        ]
+
+        st.write(
+            f"**4. Changes between 2016 and 2024:** "
+            f"The unweighted average of state-level "
+            f"mean household incomes increased from "
+            f"**RM{income_2016:,.0f}** in 2016 "
+            f"to **RM{income_2024:,.0f}** in 2024. "
+            f"Meanwhile, combined annual live births "
+            f"decreased from **{births_2016:,.0f}** "
+            f"to **{births_2024:,.0f}**. "
+            f"These changes describe overall "
+            f"trends but do not establish that "
+            f"income caused births to decline."
+        )
+
+    st.write(
+        f"**5. Overall relationship:** "
+        f"The Pearson correlation coefficient "
+        f"of **{r:+.3f}** indicated a "
+        f"**{correlation_label(r)} linear relationship** "
+        f"between household income and annual live births. "
+        f"The almost horizontal regression line "
+        f"supported this finding. Overall, household "
+        f"income alone was not a strong indicator "
+        f"of annual live-birth totals. Differences "
+        f"in population size, age structure and "
+        f"other demographic characteristics may "
+        f"also influence the observed results."
+    )
+
+    # -------------------------------------------------
+    # DATA TABLE
+    # -------------------------------------------------
+    with st.expander(
+        "View Objective 1 Dataset"
+    ):
+
+        display = data[
             [
                 "state",
                 "year",
@@ -462,10 +655,10 @@ def objective1():
         )
 
 
-# -------------------------------------------------
+# =====================================================
 # OBJECTIVE 2
-# SCHOOL COMPLETION RATES AND HOUSEHOLD INCOME
-# -------------------------------------------------
+# SCHOOL COMPLETION AND HOUSEHOLD INCOME
+# =====================================================
 def objective2():
 
     st.header(
@@ -474,35 +667,35 @@ def objective2():
     )
 
     st.write(
-        "**Research Objective:** To examine the relationship "
-        "between school completion rates and household income."
+        "**Research Objective:** To examine the "
+        "relationship between school completion "
+        "rates and household income."
     )
 
     data = df2[
-        df2["year"].isin(SURVEY_YEARS)
+        df2["year"].isin(YEARS)
     ].dropna(
         subset=[
-            "state",
             "income_mean",
             "completion",
             "stage"
         ]
     ).copy()
 
-    stage_names = {
+    stage_map = {
         "primary": "Primary",
         "secondary_lower": "Lower Secondary",
         "secondary_upper": "Upper Secondary"
     }
 
-    stages = [
+    stage_order = [
         "Primary",
         "Lower Secondary",
         "Upper Secondary"
     ]
 
     data["School Stage"] = (
-        data["stage"].map(stage_names)
+        data["stage"].map(stage_map)
     )
 
     data = data.dropna(
@@ -510,15 +703,14 @@ def objective2():
     )
 
     if data.empty:
-        st.warning("No valid data for Objective 2.")
+        st.warning("No valid data available.")
         return
 
-    # SUMMARY BOXES
     means = data.groupby(
         "School Stage"
     )["completion"].mean()
 
-    metrics([
+    summary_cards([
         (
             "Primary Completion",
             f"{means['Primary']:.2f}%"
@@ -530,42 +722,42 @@ def objective2():
         (
             "Upper Secondary Completion",
             f"{means['Upper Secondary']:.2f}%"
-        ),
+        )
     ])
 
-    # CREATE RELATIVE INCOME GROUPS
-    unique_income = data[
-        ["state", "year", "income_mean"]
+    # Relative income quartiles
+    income_data = data[
+        [
+            "state",
+            "year",
+            "income_mean"
+        ]
     ].drop_duplicates(
         ["state", "year"]
     ).copy()
 
-    order = [
+    income_order = [
         "Lowest",
         "Lower-middle",
         "Upper-middle",
         "Highest"
     ]
 
-    unique_income["Income Group"] = (
-        unique_income.groupby(
+    income_data["Income Group"] = (
+        income_data.groupby(
             "year"
         )["income_mean"].transform(
             lambda x: pd.qcut(
                 x.rank(method="first"),
                 4,
-                labels=order
+                labels=income_order
             )
         )
     )
 
     data = data.merge(
-        unique_income[
-            [
-                "state",
-                "year",
-                "Income Group"
-            ]
+        income_data[
+            ["state", "year", "Income Group"]
         ],
         on=["state", "year"],
         how="left",
@@ -580,16 +772,15 @@ def objective2():
         observed=True
     )["completion"].mean().reset_index()
 
-    grouped["Label"] = grouped[
-        "completion"
-    ].map(
-        lambda x: f"{x:.1f}%"
+    grouped["Label"] = (
+        grouped["completion"].map(
+            lambda x: f"{x:.1f}%"
+        )
     )
 
     # GROUPED BAR CHART
     st.subheader(
-        "Grouped Bar Chart: "
-        "School Completion by Income Group"
+        "Visualisation 2 — Grouped Bar Chart"
     )
 
     bars = alt.Chart(
@@ -598,13 +789,13 @@ def objective2():
 
         x=alt.X(
             "Income Group:N",
-            sort=order,
+            sort=income_order,
             title="Relative Household Income Group"
         ),
 
         xOffset=alt.XOffset(
             "School Stage:N",
-            sort=stages
+            sort=stage_order
         ),
 
         y=alt.Y(
@@ -617,9 +808,8 @@ def objective2():
 
         color=alt.Color(
             "School Stage:N",
-            title="School Stage",
             scale=alt.Scale(
-                domain=stages,
+                domain=stage_order,
                 range=[
                     "#BCDCCE",
                     "#73B49C",
@@ -629,12 +819,11 @@ def objective2():
         ),
 
         tooltip=[
-            alt.Tooltip("Income Group:N"),
-            alt.Tooltip("School Stage:N"),
+            "Income Group:N",
+            "School Stage:N",
             alt.Tooltip(
                 "completion:Q",
-                format=".2f",
-                title="Completion (%)"
+                format=".2f"
             )
         ]
     )
@@ -648,12 +837,12 @@ def objective2():
 
         x=alt.X(
             "Income Group:N",
-            sort=order
+            sort=income_order
         ),
 
         xOffset=alt.XOffset(
             "School Stage:N",
-            sort=stages
+            sort=stage_order
         ),
 
         y="completion:Q",
@@ -662,20 +851,27 @@ def objective2():
 
     st.altair_chart(
         (bars + labels).properties(
+            title=(
+                "School Completion Rates "
+                "by Household Income Group"
+            ),
             height=400
         ),
         use_container_width=True
     )
 
     st.caption(
-        "Income groups represent relative household "
-        "income quartiles among Malaysian states "
-        "within each selected year. "
-        "They are not official B40, M40 or T20 "
-        "household income classifications."
+        "Income groups represent relative "
+        "state income quartiles within each "
+        "survey year. They are not official "
+        "B40, M40 or T20 classifications."
     )
 
     # INTERPRETATION
+    st.subheader(
+        "Interpretation and Discussion"
+    )
+
     comparison = grouped.pivot(
         index="Income Group",
         columns="School Stage",
@@ -694,51 +890,25 @@ def objective2():
         ]
     )
 
-    st.subheader(
-        "Interpretation and Discussion"
-    )
-
     st.write(
-        "School completion rates remained generally "
-        "high across different income groups and "
-        "education stages. The grouped bar chart "
-        "allowed comparisons between Primary, "
-        "Lower Secondary and Upper Secondary education. "
-        "The difference in Upper Secondary completion "
-        "between the highest and lowest relative "
-        f"income groups was **{difference:+.2f} "
-        "percentage points**. These findings "
-        "identified differences between income groups "
-        "but did not establish that household income "
-        "directly caused changes in school completion."
+        f"The grouped bar chart compared school "
+        f"completion rates across four relative "
+        f"income groups and three education stages. "
+        f"Completion rates remained generally high, "
+        f"although differences were observed between "
+        f"education stages. The difference in Upper "
+        f"Secondary completion between the highest "
+        f"and lowest income groups was "
+        f"**{difference:+.2f} percentage points**. "
+        f"These results describe differences between "
+        f"groups rather than a causal effect of income."
     )
 
-    with st.expander(
-        "View Objective 2 Data"
-    ):
 
-        st.dataframe(
-            data[
-                [
-                    "state",
-                    "year",
-                    "income_mean",
-                    "School Stage",
-                    "completion",
-                    "Income Group"
-                ]
-            ].sort_values(
-                ["year", "state"]
-            ),
-            hide_index=True,
-            use_container_width=True
-        )
-
-
-# -------------------------------------------------
+# =====================================================
 # OBJECTIVE 3
-# ANNUAL LIVE BIRTHS AND SCHOOL COMPLETION RATES
-# -------------------------------------------------
+# ANNUAL LIVE BIRTHS AND SCHOOL COMPLETION
+# =====================================================
 def objective3():
 
     st.header(
@@ -747,8 +917,9 @@ def objective3():
     )
 
     st.write(
-        "**Research Objective:** To analyse the relationship "
-        "between annual live births and school completion rates."
+        "**Research Objective:** To analyse the "
+        "relationship between annual live births "
+        "and school completion rates."
     )
 
     data = df3[
@@ -757,7 +928,6 @@ def objective3():
         )
     ].dropna(
         subset=[
-            "state",
             "abs",
             "completion",
             "stage"
@@ -765,72 +935,55 @@ def objective3():
     ).copy()
 
     if data.empty:
-        st.warning("No valid data for Objective 3.")
+        st.warning("No valid data available.")
         return
 
-    # EACH STATE-YEAR HAS THREE SCHOOL STAGES.
-    # BIRTH COUNTS MUST ONLY BE COUNTED ONCE.
+    # Count births once per state-year
     state_year = data.groupby(
         ["state", "year"],
         as_index=False
     ).agg(
-
         births=("abs", "first"),
-
-        completion=(
-            "completion",
-            "mean"
-        )
+        completion=("completion", "mean")
     )
 
     yearly = state_year.groupby(
         "year",
         as_index=False
     ).agg(
-
         births=("births", "sum"),
-
-        completion=(
-            "completion",
-            "mean"
-        )
-
+        completion=("completion", "mean")
     ).sort_values("year")
 
-    if 2016 not in yearly["year"].values:
-        st.warning(
-            "A 2016 baseline is needed for "
-            "the indexed line chart."
-        )
-        return
-
-    # INDEX VALUES TO 2016 = 100
-    baseline = yearly[
+    base = yearly[
         yearly["year"] == 2016
     ].iloc[0]
 
     yearly["Birth Index"] = (
         yearly["births"]
-        / baseline["births"]
+        / base["births"]
         * 100
     )
 
     yearly["Completion Index"] = (
         yearly["completion"]
-        / baseline["completion"]
+        / base["completion"]
         * 100
-    )
-
-    r = correlation(
-        yearly,
-        "births",
-        "completion"
     )
 
     latest = yearly.iloc[-1]
 
-    # SUMMARY BOXES
-    metrics([
+    latest_states = state_year[
+        state_year["year"] == 2025
+    ]
+
+    r = pearson(
+        latest_states,
+        "births",
+        "completion"
+    )
+
+    summary_cards([
         (
             "2025 Total Live Births",
             f"{latest['births']:,.0f}"
@@ -840,18 +993,17 @@ def objective3():
             f"{latest['completion']:.2f}%"
         ),
         (
-            "Pearson r (2016–2025)",
+            "2025 Pearson r (Across Areas)",
             f"{r:+.3f}"
-        ),
+        )
     ])
 
+    # INTERACTIVE LINE CHART
     st.subheader(
-        "Interactive Line Chart: "
-        "Trends from 2016 to 2025"
+        "Visualisation 3 — Interactive Line Chart"
     )
 
-    # PREPARE BIRTHS SERIES
-    births = yearly[
+    birth_series = yearly[
         [
             "year",
             "Birth Index",
@@ -864,18 +1016,17 @@ def objective3():
         }
     )
 
-    births["Series"] = (
+    birth_series["Indicator"] = (
         "Annual Live Births"
     )
 
-    births["Original Value"] = (
-        births["Value"].map(
+    birth_series["Original Value"] = (
+        birth_series["Value"].map(
             lambda x: f"{x:,.0f} births"
         )
     )
 
-    # PREPARE COMPLETION SERIES
-    completion = yearly[
+    completion_series = yearly[
         [
             "year",
             "Completion Index",
@@ -888,27 +1039,26 @@ def objective3():
         }
     )
 
-    completion["Series"] = (
+    completion_series["Indicator"] = (
         "School Completion"
     )
 
-    completion["Original Value"] = (
-        completion["Value"].map(
+    completion_series["Original Value"] = (
+        completion_series["Value"].map(
             lambda x: f"{x:.2f}%"
         )
     )
 
-    lines = pd.concat(
+    plot_data = pd.concat(
         [
-            births,
-            completion
+            birth_series,
+            completion_series
         ],
         ignore_index=True
     )
 
-    # INTERACTIVE LINE CHART
     chart = alt.Chart(
-        lines
+        plot_data
     ).mark_line(
         point=True,
         strokeWidth=3
@@ -931,19 +1081,18 @@ def objective3():
         y=alt.Y(
             "Index:Q",
             title=(
-                "Relative Index "
-                "(2016 = 100)"
+                "Relative Index (2016 = 100)"
             ),
             scale=alt.Scale(
                 domain=[
-                    lines["Index"].min() - 6,
-                    lines["Index"].max() + 6
+                    plot_data["Index"].min() - 7,
+                    plot_data["Index"].max() + 7
                 ]
             )
         ),
 
         color=alt.Color(
-            "Series:N",
+            "Indicator:N",
             scale=alt.Scale(
                 domain=[
                     "Annual Live Births",
@@ -951,22 +1100,15 @@ def objective3():
                 ],
                 range=[
                     GREEN,
-                    "#D38A49"
+                    ORANGE
                 ]
             )
         ),
 
         tooltip=[
-            alt.Tooltip(
-                "year:O",
-                title="Year"
-            ),
-            alt.Tooltip(
-                "Series:N"
-            ),
-            alt.Tooltip(
-                "Original Value:N"
-            ),
+            "year:O",
+            "Indicator:N",
+            "Original Value:N",
             alt.Tooltip(
                 "Index:Q",
                 format=".1f"
@@ -974,75 +1116,56 @@ def objective3():
         ]
     )
 
-    baseline_line = alt.Chart(
-        pd.DataFrame({
-            "Index": [100]
-        })
-    ).mark_rule(
-        color="gray",
-        strokeDash=[5, 5]
-    ).encode(
-        y="Index:Q"
-    )
-
     st.altair_chart(
-        (
-            chart + baseline_line
-        ).properties(
+        chart.properties(
+            title=(
+                "Annual Live Births and School "
+                "Completion Trends (2016–2025)"
+            ),
             height=420
         ).interactive(),
         use_container_width=True
     )
 
     st.caption(
-        "Both series are indexed to 2016 = 100 "
-        "because annual birth counts and school "
-        "completion percentages use different units. "
-        "Hover over the points to view their "
-        "original values."
+        "Both measures are indexed to 2016 = 100 "
+        "because annual live births and school "
+        "completion percentages have different "
+        "measurement units."
     )
 
     # INTERPRETATION
-    births_change = (
-        latest["Birth Index"] - 100
-    )
-
-    comp_change = (
-        latest["completion"]
-        - baseline["completion"]
-    )
-
     st.subheader(
         "Interpretation and Discussion"
     )
 
-    st.write(
-        f"From 2016 to 2025, annual live births "
-        f"changed by **{births_change:+.1f}%**, "
-        f"while average school completion changed by "
-        f"**{comp_change:+.2f} percentage points**. "
-        f"The Pearson correlation across the ten "
-        f"yearly observations was **{r:+.3f}**, "
-        f"indicating a **{strength(r)} association** "
-        f"between the two annual measures. "
-        f"These findings compared aggregate time trends "
-        f"and did not demonstrate a causal relationship."
+    birth_change = (
+        latest["Birth Index"] - 100
     )
 
-    with st.expander(
-        "View Objective 3 Yearly Data"
-    ):
+    completion_change = (
+        latest["completion"]
+        - base["completion"]
+    )
 
-        st.dataframe(
-            yearly.round(2),
-            hide_index=True,
-            use_container_width=True
-        )
+    st.write(
+        f"Between 2016 and 2025, annual live "
+        f"births changed by "
+        f"**{birth_change:+.1f}%**, while average "
+        f"school completion changed by "
+        f"**{completion_change:+.2f} percentage points**. "
+        f"The 2025 correlation across Malaysian "
+        f"states and Federal Territories was "
+        f"**{r:+.3f}**, indicating a "
+        f"**{correlation_label(r)} association**. "
+        f"These findings describe observed patterns "
+        f"and do not establish causation."
+    )
 
 
-# -------------------------------------------------
-# DASHBOARD HEADER
-# -------------------------------------------------
+# =====================================================
+# 4. DASHBOARD HEADER
+# =====================================================
 st.markdown(
     """
     <div style="
@@ -1053,24 +1176,22 @@ st.markdown(
         margin-bottom:20px;
     ">
       <div style="
-          font-size:13px;
-          color:#DDECE4;
-          font-weight:700;
+        font-size:13px;
+        color:#DDECE4;
+        font-weight:700;
       ">
         JIE42403 · SCIENTIFIC VISUALISATION
       </div>
-
       <div style="
-          font-size:29px;
-          font-weight:700;
-          margin-top:8px;
+        font-size:29px;
+        font-weight:700;
+        margin-top:8px;
       ">
         Malaysia Data Insights
       </div>
-
       <div style="
-          color:#E4F2EB;
-          margin-top:5px;
+        color:#E4F2EB;
+        margin-top:5px;
       ">
         Household Income · Annual Live Births ·
         School Completion
@@ -1081,9 +1202,9 @@ st.markdown(
 )
 
 
-# -------------------------------------------------
-# SIDEBAR NAVIGATION
-# -------------------------------------------------
+# =====================================================
+# 5. NAVIGATION
+# =====================================================
 pages = st.navigation(
     [
         st.Page(
@@ -1111,9 +1232,9 @@ pages = st.navigation(
 pages.run()
 
 
-# -------------------------------------------------
-# DATA SOURCES
-# -------------------------------------------------
+# =====================================================
+# 6. DATA SOURCES
+# =====================================================
 st.divider()
 
 with st.expander(
@@ -1121,26 +1242,14 @@ with st.expander(
 ):
 
     st.write(
-        "Sources: OpenDOSM Malaysian state-level "
-        "annual live births, mean household income "
-        "and school completion datasets. "
-        "Objectives 1 and 2 use selected income "
-        "survey years (2016, 2019, 2020, 2022 "
-        "and 2024). Objective 3 covers 2016–2025. "
-        "Birth counts reflect population size, "
-        "while school completion averages "
-        "are not population-weighted."
-    )
-
-    st.markdown(
-        "[Live Births]"
-        "(https://open.dosm.gov.my/data-catalogue/births_annual_state)"
-        " | "
-        "[Household Income]"
-        "(https://open.dosm.gov.my/data-catalogue/hh_income_state)"
-        " | "
-        "[School Completion]"
-        "(https://open.dosm.gov.my/data-catalogue/completion_school_state)"
+        "Data source: OpenDOSM Malaysian state-level "
+        "annual live births, household income and "
+        "school completion datasets. Objectives 1 "
+        "and 2 use selected years between 2016 "
+        "and 2024. Objective 3 covers 2016–2025. "
+        "Annual birth counts are affected by "
+        "population size, and associations should "
+        "not be interpreted as causal."
     )
 
 st.caption(
