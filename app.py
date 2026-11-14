@@ -843,8 +843,7 @@ def objective3():
 
     chart = figure(
         title=(
-            "Annual Live Births and School Completion "
-            "Trends (2016–2025)"
+            "Indexed Trends in Annual Live Births and School Completion Rates in Malaysia (2016–2025)"
         ),
         height=430,
         sizing_mode="stretch_width",
